@@ -5,10 +5,8 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
-import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.ColumnConstraints;
-import javafx.scene.layout.GridPane;
-import javafx.scene.layout.RowConstraints;
+import javafx.scene.control.Label;
+import javafx.scene.layout.*;
 import javafx.scene.text.Font;
 import javafx.stage.Stage;
 
@@ -21,97 +19,102 @@ public class TicTacToe extends Application {
 
     private static ArrayList<Boolean> filledCells = new ArrayList<>(9);
 
-    private FillAI aiLogic = new SmartAI();
+    private TicTacToeAI aiLogic;
+
+    private Label statusLabel;
 
     public TicTacToe() {
+        statusLabel = new Label("");
+        aiLogic = new SmartTicTacToeAI();
+
         // initialize filledCells list
         for (int i = 0; i < 9; i++) {
             filledCells.add(false);
         }
+        clearGridArray();
     }
 
     @Override
     public void start(Stage primaryStage) throws Exception {
-        clearGridArray();
-        BorderPane root = new BorderPane();
-        GridPane grid = new GridPane();
+        GridPane board = new GridPane() {{
+            ColumnConstraints column1 = new ColumnConstraints(50, 75, 100);
+            RowConstraints row1 = new RowConstraints(50, 75, 100);
 
-        Button clearButton = new Button("Clear");
+            getColumnConstraints().addAll(column1, column1, column1);
+            getRowConstraints().addAll(row1, row1, row1);
+            for (int index = 0; index < 9; index++) {
+                add(createCell(), index % 3, index / 3);
+            }
+            setHgap(50);
+            setVgap(50);
+        }};
+        Button clearButton = new Button("Clear") {{
+            setFont(new Font(20));
+            setOnAction(ae -> clearGrid());
+        }};
 
-        ColumnConstraints column1 = new ColumnConstraints(50, 75, 100);
-        RowConstraints row1 = new RowConstraints(50, 75, 100);
+        // layout
+        BorderPane root = new BorderPane() {{
+            VBox bottomPanel = new VBox(5, statusLabel, clearButton);
+            bottomPanel.setAlignment(Pos.CENTER);
+            BorderPane.setMargin(bottomPanel, new Insets(20));
 
-        grid.getColumnConstraints().addAll(column1, column1, column1);
-        grid.getRowConstraints().addAll(row1, row1, row1);
-        grid.setHgap(50);
-        grid.setVgap(50);
+            setCenter(board);
+            setBottom(bottomPanel);
 
-        for (int index = 0; index < 9; index++) {
-            grid.add(createCell(), index % 3, index / 3);
-        }
-        BorderPane.setMargin(grid, new Insets(25));
-        root.setCenter(grid);
-
-        BorderPane.setAlignment(clearButton, Pos.CENTER);
-        BorderPane.setMargin(clearButton, new Insets(20));
-
-        clearButton.setFont(new Font(20));
-        clearButton.setOnAction(ae -> clearGrid());
-        root.setBottom(clearButton);
-
-        root.setMaxWidth(375);
-        root.setMaxHeight(450);
+            setMargin(board, new Insets(25));
+            setMaxWidth(375);
+            setMaxHeight(450);
+        }};
 
         Scene scene = new Scene(root, 375, 450);
+
         primaryStage.setMaxWidth(375);
         primaryStage.setMinWidth(300);
-        primaryStage.setMaxHeight(450);
+        primaryStage.setMaxHeight(500);
         primaryStage.setMinHeight(400);
         primaryStage.setScene(scene);
         primaryStage.setTitle("Tic-Tac-Toe");
         primaryStage.show();
-
-        fillCell("O", aiLogic.nextMove());
     }
 
     private Button createCell() {
-        Button cell = new Button("");
-        cell.setMinHeight(50);
-        cell.setPrefHeight(75);
-        cell.setMaxHeight(100);
-        cell.setMinWidth(50);
-        cell.setPrefWidth(75);
-        cell.setMaxWidth(100);
-        cell.setFont(new Font(23));
+        Button cell = new Button("") {{
+            setMinHeight(50);
+            setPrefHeight(75);
+            setMaxHeight(100);
+            setMinWidth(50);
+            setPrefWidth(75);
+            setMaxWidth(100);
+            setFont(new Font(23));
+        }};
 
         cell.setOnAction(ae -> {
-            int index = cells.indexOf(cell);
-            if (filledCells.get(index)) {
+            int clickedCellIndex = cells.indexOf(cell);
+            if (filledCells.get(clickedCellIndex)) {
                 return;
             } else {
-                fillCell("X", index);
+                fillCell("X", clickedCellIndex);
             }
 
             if (hasWon("X")) {
-                System.out.println("You have won");
+                statusLabel.setText("You have won");
                 disableGrid();
                 return;
             }
             if (isGridFull()) {
-                System.out.println("Game is draw");
+                statusLabel.setText("Game is draw");
                 disableGrid();
                 return;
             }
 
             // AI logic
             int aiIndex = aiLogic.nextMove();
-
             fillCell("O", aiIndex);
 
             if (hasWon("O")) {
-                System.out.println("Computer has won");
+                statusLabel.setText("Computer has won");
                 disableGrid();
-                return;
             }
         });
 
@@ -134,11 +137,7 @@ public class TicTacToe extends Application {
     private void clearGrid() {
         cells.forEach(cell -> cell.setText(""));
         clearGridArray();
-        fillCell("O", aiLogic.nextMove());
-    }
-
-    public static void main(String[] args) {
-        Application.launch(args);
+        statusLabel.setText("");
     }
 
     private static void disableGrid() {
@@ -189,12 +188,12 @@ public class TicTacToe extends Application {
         return false;
     }
 
-    public interface FillAI {
+    public interface TicTacToeAI {
         int nextMove();
     }
 
-
-    class RandomAI implements FillAI {
+    @SuppressWarnings("unused")
+    class RandomAI implements TicTacToeAI {
         @Override
         public int nextMove() {
             int aiIndex = (int)Math.floor(Math.random() * 9);
@@ -205,7 +204,7 @@ public class TicTacToe extends Application {
         }
     }
 
-    class SmartAI implements FillAI {
+    class SmartTicTacToeAI implements TicTacToeAI {
         @Override
         public int nextMove() {
             int aiIndex;
@@ -222,9 +221,8 @@ public class TicTacToe extends Application {
                 return aiIndex;
             }
 
-            // corner-fill move
-            Random random = new Random();
-            List<Integer> corners = new ArrayList() {{
+            /*// corner-fill move
+            ArrayList<Integer> corners = new ArrayList() {{
                 add(0);add(2);add(6);add(8);
             }};
             int cornersFilled = (int)corners.stream().map(index -> cells.get(index).getText().equals("O") ? 1 : 0).reduce(0, (a,b) -> a + b);
@@ -261,8 +259,9 @@ public class TicTacToe extends Application {
                 }
 
                 throw new ArrayIndexOutOfBoundsException("Debug: Logic failure");
-            }
+            }*/
 
+            // random position move
             aiIndex = (int)Math.floor(Math.random() * 9);
             while (filledCells.get(aiIndex)) {
                 aiIndex = (int)Math.floor(Math.random() * 9);
@@ -270,25 +269,24 @@ public class TicTacToe extends Application {
             return aiIndex;
         }
 
+        // utility methods
         private boolean isCellEmpty(int index) {
-            return cells.get(index).getText().equals("");
+            return cellContent(index).equals("");
         }
-
+        @SuppressWarnings("unused")
         private boolean isCellFilled(int index) {
             return !isCellEmpty(index);
         }
-
         private String cellContent(int index) {
             return cells.get(index).getText();
         }
-
+        @SuppressWarnings("unused")
         private int anyAmong(int a, int b) {
             if((int)Math.floor(Math.random() * 2) == 0)
                 return a;
             else
                 return b;
         }
-
         private int getEmptyInLine(String cellString) {
             // prevention move check (horizontal)
             for (int r = 0; r < 3; r++) {
@@ -352,5 +350,9 @@ public class TicTacToe extends Application {
 
             return -1;
         }
+    }
+
+    public static void main(String[] args) {
+        Application.launch(args);
     }
 }
