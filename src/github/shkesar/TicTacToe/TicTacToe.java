@@ -210,13 +210,13 @@ public class TicTacToe extends Application {
             int aiIndex;
 
             // winning move check
-            aiIndex = getEmptyInLine("O");
+            aiIndex = getEmptyInLine("o");
             if (aiIndex != -1) {
                 return aiIndex;
             }
 
             // preventive move check
-            aiIndex = getEmptyInLine("X");
+            aiIndex = getEmptyInLine("x");
             if (aiIndex != -1) {
                 return aiIndex;
             }
@@ -347,7 +347,6 @@ public class TicTacToe extends Application {
                     cells.get(4).getText().equals(cellString) &&
                     cells.get(6).getText().equals(cellString))
                 return 2;
-
             return -1;
         }
     }
