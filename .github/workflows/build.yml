@@ -34,6 +34,30 @@ jobs:
           name: TicTacToe-android-debug
           path: composeApp/build/outputs/apk/debug/*.apk
 
+  macos:
+    name: macOS desktop app (.dmg)
+    runs-on: macos-14   # Apple Silicon; produces an arm64 app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      - name: Build DMG
+        run: ./gradlew :composeApp:packageDmg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TicTacToe-macos-dmg
+          path: composeApp/build/compose/binaries/main/dmg/*.dmg
+
   ios:
     name: iOS Simulator build
     runs-on: macos-14

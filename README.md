@@ -43,6 +43,15 @@ gradlew :composeApp:run
 ```
 To build an installer for the current OS (`.msi`, `.dmg` or `.deb`), run `gradlew :composeApp:packageDistributionForCurrentOS`.
 
+### macOS (built in the cloud)
+GitHub Actions builds `TicTacToe-1.0.0.dmg` on a Mac on every push. Download it from the run's **TicTacToe-macos-dmg** artifact. The app is built for Apple Silicon (M1 and later).
+
+The app is unsigned, so macOS will block it the first time you open it. To get past that:
+- Right-click the app, choose **Open**, then confirm.
+- Or run `xattr -dr com.apple.quarantine /Applications/TicTacToe.app`.
+
+Signing and notarizing the app would remove that warning, but it needs a paid Apple Developer account.
+
 ## iPhone
 iOS apps can only be compiled on macOS. On every push, GitHub Actions ([.github/workflows/build.yml](.github/workflows/build.yml)) does three things:
 - builds the app for the **iOS Simulator** (unsigned)

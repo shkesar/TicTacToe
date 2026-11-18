@@ -75,6 +75,9 @@ compose.desktop {
             targetFormats(TargetFormat.Msi, TargetFormat.Dmg, TargetFormat.Deb)
             packageName = "TicTacToe"
             packageVersion = "1.0.0"
+            macOS {
+                bundleID = "github.shkesar.tictactoe"
+            }
         }
     }
 }
