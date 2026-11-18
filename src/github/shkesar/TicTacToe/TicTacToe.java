@@ -1,354 +1,391 @@
 package github.shkesar.TicTacToe;
 
+import javafx.animation.Animation;
+import javafx.animation.FadeTransition;
+import javafx.animation.Interpolator;
+import javafx.animation.ParallelTransition;
+import javafx.animation.PauseTransition;
+import javafx.animation.ScaleTransition;
+import javafx.animation.SequentialTransition;
+import javafx.animation.TranslateTransition;
 import javafx.application.Application;
-import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Cursor;
+import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
-import javafx.scene.layout.*;
-import javafx.scene.text.Font;
+import javafx.scene.control.ToggleButton;
+import javafx.scene.control.ToggleGroup;
+import javafx.scene.layout.ColumnConstraints;
+import javafx.scene.layout.GridPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.RowConstraints;
+import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
+import javafx.util.Duration;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
 
 public class TicTacToe extends Application {
-    private static ArrayList<Button> cells = new ArrayList<>();
+    private static final char HUMAN = 'X';
+    private static final char COMPUTER = 'O';
 
-    private static ArrayList<Boolean> filledCells = new ArrayList<>(9);
+    private final Board board = new Board();
+    private final StackPane[] tiles = new StackPane[9];
+    private final Label[] marks = new Label[9];
+    private final List<Animation> winAnimations = new ArrayList<>();
 
-    private TicTacToeAI aiLogic;
+    private char current = 'X';
+    private boolean vsAI = true;
+    private AI ai = AI.forDifficulty(AI.Difficulty.MEDIUM);
+    private boolean locked = false;
+    private boolean gameOver = false;
+    private PauseTransition pendingAI;
 
+    private int scoreX, scoreO, draws;
+
+    private GridPane grid;
     private Label statusLabel;
-
-    public TicTacToe() {
-        statusLabel = new Label("");
-        aiLogic = new SmartTicTacToeAI();
-
-        // initialize filledCells list
-        for (int i = 0; i < 9; i++) {
-            filledCells.add(false);
-        }
-        clearGridArray();
-    }
+    private VBox cardX, cardO, cardDraw;
+    private Label nameX, nameO, valueX, valueO, valueDraw;
+    private HBox difficultyBar;
 
     @Override
-    public void start(Stage primaryStage) throws Exception {
-        GridPane board = new GridPane() {{
-            ColumnConstraints column1 = new ColumnConstraints(50, 75, 100);
-            RowConstraints row1 = new RowConstraints(50, 75, 100);
+    public void start(Stage stage) {
+        Label title = new Label("TIC · TAC · TOE");
+        title.getStyleClass().add("title");
 
-            getColumnConstraints().addAll(column1, column1, column1);
-            getRowConstraints().addAll(row1, row1, row1);
-            for (int index = 0; index < 9; index++) {
-                add(createCell(), index % 3, index / 3);
-            }
-            setHgap(50);
-            setVgap(50);
-        }};
-        Button clearButton = new Button("Clear") {{
-            setFont(new Font(20));
-            setOnAction(ae -> clearGrid());
-        }};
+        // --- mode toggle ---
+        ToggleGroup modeGroup = new ToggleGroup();
+        ToggleButton vsAiBtn = chip("vs AI", modeGroup);
+        ToggleButton twoPlayerBtn = chip("2 Players", modeGroup);
+        vsAiBtn.setSelected(true);
+        keepOneSelected(modeGroup);
+        modeGroup.selectedToggleProperty().addListener((obs, old, sel) -> {
+            if (sel == null) return;
+            vsAI = sel == vsAiBtn;
+            difficultyBar.setVisible(vsAI);
+            difficultyBar.setManaged(vsAI);
+            updateScoreNames();
+            resetScore();
+        });
+        HBox modeBar = new HBox(8, vsAiBtn, twoPlayerBtn);
+        modeBar.setAlignment(Pos.CENTER);
 
-        // layout
-        BorderPane root = new BorderPane() {{
-            VBox bottomPanel = new VBox(5, statusLabel, clearButton);
-            bottomPanel.setAlignment(Pos.CENTER);
-            BorderPane.setMargin(bottomPanel, new Insets(20));
+        // --- difficulty toggle ---
+        ToggleGroup diffGroup = new ToggleGroup();
+        ToggleButton easy = chip("Easy", diffGroup);
+        ToggleButton medium = chip("Medium", diffGroup);
+        ToggleButton hard = chip("Hard", diffGroup);
+        easy.setUserData(AI.Difficulty.EASY);
+        medium.setUserData(AI.Difficulty.MEDIUM);
+        hard.setUserData(AI.Difficulty.HARD);
+        medium.setSelected(true);
+        keepOneSelected(diffGroup);
+        diffGroup.selectedToggleProperty().addListener((obs, old, sel) -> {
+            if (sel == null) return;
+            ai = AI.forDifficulty((AI.Difficulty) sel.getUserData());
+            newRound();
+        });
+        difficultyBar = new HBox(8, easy, medium, hard);
+        difficultyBar.setAlignment(Pos.CENTER);
+        difficultyBar.getStyleClass().add("difficulty-bar");
 
-            setCenter(board);
-            setBottom(bottomPanel);
+        // --- scoreboard ---
+        nameX = new Label();
+        nameO = new Label();
+        valueX = new Label("0");
+        valueO = new Label("0");
+        valueDraw = new Label("0");
+        cardX = scoreCard(nameX, valueX, "card-x");
+        cardDraw = scoreCard(new Label("Draws"), valueDraw, "card-draw");
+        cardO = scoreCard(nameO, valueO, "card-o");
+        HBox scoreBar = new HBox(12, cardX, cardDraw, cardO);
+        scoreBar.setAlignment(Pos.CENTER);
+        updateScoreNames();
 
-            setMargin(board, new Insets(25));
-            setMaxWidth(375);
-            setMaxHeight(450);
-        }};
+        // --- board ---
+        grid = new GridPane();
+        grid.getStyleClass().add("board");
+        grid.setHgap(14);
+        grid.setVgap(14);
+        grid.setAlignment(Pos.CENTER);
+        for (int i = 0; i < 3; i++) {
+            ColumnConstraints cc = new ColumnConstraints(80, 110, 160);
+            cc.setHgrow(Priority.ALWAYS);
+            RowConstraints rc = new RowConstraints(80, 110, 160);
+            rc.setVgrow(Priority.ALWAYS);
+            grid.getColumnConstraints().add(cc);
+            grid.getRowConstraints().add(rc);
+        }
+        for (int i = 0; i < 9; i++) {
+            grid.add(createTile(i), i % 3, i / 3);
+        }
+        VBox.setVgrow(grid, Priority.ALWAYS);
 
-        Scene scene = new Scene(root, 375, 450);
+        statusLabel = new Label();
+        statusLabel.getStyleClass().add("status");
 
-        primaryStage.setMaxWidth(375);
-        primaryStage.setMinWidth(300);
-        primaryStage.setMaxHeight(500);
-        primaryStage.setMinHeight(400);
-        primaryStage.setScene(scene);
-        primaryStage.setTitle("Tic-Tac-Toe");
-        primaryStage.show();
+        // --- actions ---
+        Button newRoundBtn = new Button("New Round");
+        newRoundBtn.getStyleClass().addAll("action", "primary");
+        newRoundBtn.setOnAction(e -> newRound());
+        Button resetBtn = new Button("Reset Score");
+        resetBtn.getStyleClass().add("action");
+        resetBtn.setOnAction(e -> resetScore());
+        HBox actions = new HBox(12, newRoundBtn, resetBtn);
+        actions.setAlignment(Pos.CENTER);
+
+        VBox root = new VBox(16, title, modeBar, difficultyBar, scoreBar, grid, statusLabel, actions);
+        root.getStyleClass().add("root-pane");
+        root.setAlignment(Pos.TOP_CENTER);
+
+        Scene scene = new Scene(root, 460, 700);
+        scene.getStylesheets().add(getClass().getResource("styles.css").toExternalForm());
+
+        stage.setScene(scene);
+        stage.setTitle("Tic-Tac-Toe");
+        stage.setMinWidth(380);
+        stage.setMinHeight(620);
+        stage.show();
+
+        newRound();
     }
 
-    private Button createCell() {
-        Button cell = new Button("") {{
-            setMinHeight(50);
-            setPrefHeight(75);
-            setMaxHeight(100);
-            setMinWidth(50);
-            setPrefWidth(75);
-            setMaxWidth(100);
-            setFont(new Font(23));
-        }};
+    // ------------------------------------------------------------------ UI builders
 
-        cell.setOnAction(ae -> {
-            int clickedCellIndex = cells.indexOf(cell);
-            if (filledCells.get(clickedCellIndex)) {
-                return;
-            } else {
-                fillCell("X", clickedCellIndex);
+    private ToggleButton chip(String text, ToggleGroup group) {
+        ToggleButton b = new ToggleButton(text);
+        b.setToggleGroup(group);
+        b.getStyleClass().add("chip");
+        return b;
+    }
+
+    /** Prevents a toggle group from ending up with nothing selected. */
+    private static void keepOneSelected(ToggleGroup group) {
+        group.selectedToggleProperty().addListener((obs, old, sel) -> {
+            if (sel == null && old != null) old.setSelected(true);
+        });
+    }
+
+    private VBox scoreCard(Label name, Label value, String variant) {
+        name.getStyleClass().add("score-name");
+        value.getStyleClass().add("score-value");
+        VBox card = new VBox(2, name, value);
+        card.setAlignment(Pos.CENTER);
+        card.getStyleClass().addAll("score-card", variant);
+        return card;
+    }
+
+    private StackPane createTile(int index) {
+        Label mark = new Label();
+        mark.getStyleClass().add("mark");
+        mark.setMouseTransparent(true);
+
+        StackPane tile = new StackPane(mark);
+        tile.getStyleClass().add("tile");
+        tile.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
+        tile.setCursor(Cursor.HAND);
+
+        tile.setOnMouseEntered(e -> {
+            if (canHumanPlay() && board.isEmpty(index)) {
+                mark.setText(String.valueOf(current));
+                setMarkClass(mark, current, true);
             }
-
-            if (hasWon("X")) {
-                statusLabel.setText("You have won");
-                disableGrid();
-                return;
-            }
-            if (isGridFull()) {
-                statusLabel.setText("Game is draw");
-                disableGrid();
-                return;
-            }
-
-            // AI logic
-            int aiIndex = aiLogic.nextMove();
-            fillCell("O", aiIndex);
-
-            if (hasWon("O")) {
-                statusLabel.setText("Computer has won");
-                disableGrid();
+        });
+        tile.setOnMouseExited(e -> {
+            if (board.isEmpty(index)) mark.setText("");
+        });
+        tile.setOnMouseClicked(e -> {
+            if (canHumanPlay() && board.isEmpty(index)) {
+                play(index);
             }
         });
 
-        cells.add(cell);
-        return cell;
+        tiles[index] = tile;
+        marks[index] = mark;
+        return tile;
     }
 
-    private static void fillCell(String player, int index) {
-        cells.get(index).setText(player);
-        filledCells.set(index, true);
+    private static void setMarkClass(Label mark, char player, boolean preview) {
+        mark.getStyleClass().removeAll("mark-x", "mark-o", "preview");
+        mark.getStyleClass().add(player == 'X' ? "mark-x" : "mark-o");
+        if (preview) mark.getStyleClass().add("preview");
     }
 
-    private static void clearGridArray() {
+    private void updateScoreNames() {
+        nameX.setText(vsAI ? "You (X)" : "Player X");
+        nameO.setText(vsAI ? "AI (O)" : "Player O");
+    }
+
+    // ------------------------------------------------------------------ game flow
+
+    private boolean canHumanPlay() {
+        return !locked && !gameOver && (!vsAI || current == HUMAN);
+    }
+
+    private void play(int index) {
+        board.place(index, current);
+        Label mark = marks[index];
+        mark.setText(String.valueOf(current));
+        setMarkClass(mark, current, false);
+        popIn(mark);
+
+        int[] line = board.winningLine(current);
+        if (line != null) {
+            endWithWin(current, line);
+            return;
+        }
+        if (board.isFull()) {
+            endWithDraw();
+            return;
+        }
+
+        current = Board.opponent(current);
+        refreshTurnUI();
+
+        if (vsAI && current == COMPUTER) {
+            locked = true;
+            statusLabel.setText("AI is thinking…");
+            pendingAI = new PauseTransition(Duration.millis(450));
+            pendingAI.setOnFinished(e -> {
+                pendingAI = null;
+                locked = false;
+                play(ai.nextMove(board, COMPUTER));
+            });
+            pendingAI.play();
+        }
+    }
+
+    private void refreshTurnUI() {
+        cardX.getStyleClass().remove("active");
+        cardO.getStyleClass().remove("active");
+        if (gameOver) return;
+        (current == 'X' ? cardX : cardO).getStyleClass().add("active");
+        if (vsAI) {
+            statusLabel.setText(current == HUMAN ? "Your turn" : "AI is thinking…");
+        } else {
+            statusLabel.setText("Player " + current + "'s turn");
+        }
+    }
+
+    private void endWithWin(char winner, int[] line) {
+        gameOver = true;
+        if (winner == 'X') {
+            scoreX++;
+            bump(valueX, scoreX);
+        } else {
+            scoreO++;
+            bump(valueO, scoreO);
+        }
+
+        if (vsAI) {
+            statusLabel.setText(winner == HUMAN ? "You win!" : "AI wins — try again!");
+        } else {
+            statusLabel.setText("Player " + winner + " wins!");
+        }
+        refreshTurnUI();
+
         for (int i = 0; i < 9; i++) {
-            filledCells.set(i, false);
-        }
-        enableGrid();
-    }
-
-    private void clearGrid() {
-        cells.forEach(cell -> cell.setText(""));
-        clearGridArray();
-        statusLabel.setText("");
-    }
-
-    private static void disableGrid() {
-        cells.forEach(cell -> cell.setDisable(true));
-    }
-
-    private static void enableGrid() {
-        cells.forEach(cell -> cell.setDisable(false));
-    }
-
-    private static boolean isGridFull() {
-        for (boolean cellFilled : filledCells) {
-            if (!cellFilled)
-                return false;
-        }
-        return true;
-    }
-
-    private static boolean hasWon(String playerString) {
-        // horizontal check
-        for (int r = 0; r < 3; r++) {
-            if (cells.get(r * 3).getText().equals(playerString) &&
-                    cells.get(r * 3 + 1).getText().equals(playerString) &&
-                    cells.get(r * 3 + 2).getText().equals(playerString))
-                return true;
-        }
-
-        // vertical check
-        for (int c = 0; c < 3; c++) {
-            if (cells.get(c).getText().equals(playerString) &&
-                    cells.get(3 + c).getText().equals(playerString) &&
-                    cells.get(6 + c).getText().equals(playerString))
-            return true;
-        }
-
-        // left-to-right down diagonal
-        if (cells.get(0).getText().equals(playerString) &&
-                cells.get(4).getText().equals(playerString) &&
-                cells.get(8).getText().equals(playerString))
-            return true;
-
-        // right-to-left down diagonal
-        if (cells.get(2).getText().equals(playerString) &&
-                cells.get(4).getText().equals(playerString) &&
-                cells.get(6).getText().equals(playerString))
-            return true;
-
-        return false;
-    }
-
-    public interface TicTacToeAI {
-        int nextMove();
-    }
-
-    @SuppressWarnings("unused")
-    class RandomAI implements TicTacToeAI {
-        @Override
-        public int nextMove() {
-            int aiIndex = (int)Math.floor(Math.random() * 9);
-            while (filledCells.get(aiIndex)) {
-                aiIndex = (int)Math.floor(Math.random() * 9);
+            boolean inLine = i == line[0] || i == line[1] || i == line[2];
+            if (inLine) {
+                tiles[i].getStyleClass().add("win");
+                ScaleTransition pulse = new ScaleTransition(Duration.millis(600), tiles[i]);
+                pulse.setFromX(1); pulse.setFromY(1);
+                pulse.setToX(1.07); pulse.setToY(1.07);
+                pulse.setAutoReverse(true);
+                pulse.setCycleCount(Animation.INDEFINITE);
+                pulse.play();
+                winAnimations.add(pulse);
+            } else {
+                FadeTransition dim = new FadeTransition(Duration.millis(300), tiles[i]);
+                dim.setToValue(0.35);
+                dim.play();
+                winAnimations.add(dim);
             }
-            return aiIndex;
         }
     }
 
-    class SmartTicTacToeAI implements TicTacToeAI {
-        @Override
-        public int nextMove() {
-            int aiIndex;
+    private void endWithDraw() {
+        gameOver = true;
+        draws++;
+        bump(valueDraw, draws);
+        statusLabel.setText("It's a draw!");
+        refreshTurnUI();
 
-            // winning move check
-            aiIndex = getEmptyInLine("o");
-            if (aiIndex != -1) {
-                return aiIndex;
-            }
+        TranslateTransition shake = new TranslateTransition(Duration.millis(60), grid);
+        shake.setFromX(0);
+        shake.setByX(10);
+        shake.setCycleCount(6);
+        shake.setAutoReverse(true);
+        shake.setOnFinished(e -> grid.setTranslateX(0));
+        shake.play();
+    }
 
-            // preventive move check
-            aiIndex = getEmptyInLine("x");
-            if (aiIndex != -1) {
-                return aiIndex;
-            }
-
-            /*// corner-fill move
-            ArrayList<Integer> corners = new ArrayList() {{
-                add(0);add(2);add(6);add(8);
-            }};
-            int cornersFilled = (int)corners.stream().map(index -> cells.get(index).getText().equals("O") ? 1 : 0).reduce(0, (a,b) -> a + b);
-
-            if (cornersFilled == 0) {
-                List<Integer> emptyCorners = new ArrayList<>();
-                if (isCellEmpty(0)) emptyCorners.add(0);
-                if (isCellEmpty(2)) emptyCorners.add(2);
-                if (isCellEmpty(6)) emptyCorners.add(6);
-                if (isCellEmpty(8)) emptyCorners.add(8);
-
-                return emptyCorners.get((int) Math.floor(Math.random() * emptyCorners.size()));
-            } else
-            if (cornersFilled == 1) {
-                int filledCorner = -1;
-                if (isCellFilled(0)) filledCorner = 0;
-                if (isCellFilled(2)) filledCorner = 2;
-                if (isCellFilled(6)) filledCorner = 6;
-                if (isCellFilled(8)) filledCorner = 8;
-
-                if (filledCorner == 0 || filledCorner == 8) {
-                    if (isCellFilled(2))
-                        return 6;
-                    if (isCellFilled(6))
-                        return 2;
-                    return anyAmong(2, 6);
-                }
-                else if (filledCorner == 2 || filledCorner == 6) {
-                    if (isCellFilled(0))
-                        return 8;
-                    if (isCellFilled(8))
-                        return 0;
-                    return anyAmong(0, 8);
-                }
-
-                throw new ArrayIndexOutOfBoundsException("Debug: Logic failure");
-            }*/
-
-            // random position move
-            aiIndex = (int)Math.floor(Math.random() * 9);
-            while (filledCells.get(aiIndex)) {
-                aiIndex = (int)Math.floor(Math.random() * 9);
-            }
-            return aiIndex;
+    private void newRound() {
+        if (pendingAI != null) {
+            pendingAI.stop();
+            pendingAI = null;
         }
+        winAnimations.forEach(Animation::stop);
+        winAnimations.clear();
 
-        // utility methods
-        private boolean isCellEmpty(int index) {
-            return cellContent(index).equals("");
+        board.reset();
+        for (int i = 0; i < 9; i++) {
+            marks[i].setText("");
+            tiles[i].getStyleClass().remove("win");
+            tiles[i].setScaleX(1);
+            tiles[i].setScaleY(1);
+            tiles[i].setOpacity(1);
         }
-        @SuppressWarnings("unused")
-        private boolean isCellFilled(int index) {
-            return !isCellEmpty(index);
-        }
-        private String cellContent(int index) {
-            return cells.get(index).getText();
-        }
-        @SuppressWarnings("unused")
-        private int anyAmong(int a, int b) {
-            if((int)Math.floor(Math.random() * 2) == 0)
-                return a;
-            else
-                return b;
-        }
-        private int getEmptyInLine(String cellString) {
-            // prevention move check (horizontal)
-            for (int r = 0; r < 3; r++) {
-                if (cells.get(r * 3).getText().equals(cellString) &&
-                        cells.get(r * 3 + 1).getText().equals(cellString) &&
-                        cells.get(r * 3 + 2).getText().equals(""))
-                    return (r * 3 + 2);
-                if (cells.get(r * 3).getText().equals(cellString) &&
-                        cells.get(r * 3 + 1).getText().equals("") &&
-                        cells.get(r * 3 + 2).getText().equals(cellString))
-                    return (r * 3 + 1);
-                if (cells.get(r * 3).getText().equals("") &&
-                        cells.get(r * 3 + 1).getText().equals(cellString) &&
-                        cells.get(r * 3 + 2).getText().equals(cellString))
-                    return (r * 3);
-            }
+        grid.setTranslateX(0);
 
-            // prevention move check (vertical)
-            for (int c = 0; c < 3; c++) {
-                if (cells.get(c).getText().equals(cellString) &&
-                        cells.get(3 + c).getText().equals(cellString) &&
-                        cells.get(6 + c).getText().equals(""))
-                    return (6 + c);
-                if (cells.get(c).getText().equals(cellString) &&
-                        cells.get(3 + c).getText().equals("") &&
-                        cells.get(6 + c).getText().equals(cellString))
-                    return (3 + c);
-                if (cells.get(c).getText().equals("") &&
-                        cells.get(3 + c).getText().equals(cellString) &&
-                        cells.get(6 + c).getText().equals(cellString))
-                    return (c);
-            }
+        current = 'X';
+        locked = false;
+        gameOver = false;
+        refreshTurnUI();
+    }
 
-            // prevention move (left-to-right down diagonal)
-            if (cells.get(0).getText().equals(cellString) &&
-                    cells.get(4).getText().equals(cellString) &&
-                    cells.get(8).getText().equals(""))
-                return 8;
-            if (cells.get(0).getText().equals(cellString) &&
-                    cells.get(4).getText().equals("") &&
-                    cells.get(8).getText().equals(cellString))
-                return 4;
-            if (cells.get(0).getText().equals("") &&
-                    cells.get(4).getText().equals(cellString) &&
-                    cells.get(8).getText().equals(cellString))
-                return 0;
+    private void resetScore() {
+        scoreX = scoreO = draws = 0;
+        valueX.setText("0");
+        valueO.setText("0");
+        valueDraw.setText("0");
+        newRound();
+    }
 
-            // prevention move (right-to-left down diagonal)
-            if (cells.get(2).getText().equals(cellString) &&
-                    cells.get(4).getText().equals(cellString) &&
-                    cells.get(6).getText().equals(""))
-                return 6;
-            if (cells.get(2).getText().equals(cellString) &&
-                    cells.get(4).getText().equals("") &&
-                    cells.get(6).getText().equals(cellString))
-                return 4;
-            if (cells.get(2).getText().equals("") &&
-                    cells.get(4).getText().equals(cellString) &&
-                    cells.get(6).getText().equals(cellString))
-                return 2;
-            return -1;
-        }
+    // ------------------------------------------------------------------ animations
+
+    private static void popIn(Node node) {
+        node.setScaleX(0.2);
+        node.setScaleY(0.2);
+        node.setOpacity(0);
+
+        ScaleTransition grow = new ScaleTransition(Duration.millis(160), node);
+        grow.setToX(1.15);
+        grow.setToY(1.15);
+        grow.setInterpolator(Interpolator.EASE_OUT);
+        ScaleTransition settle = new ScaleTransition(Duration.millis(110), node);
+        settle.setToX(1);
+        settle.setToY(1);
+        FadeTransition fade = new FadeTransition(Duration.millis(160), node);
+        fade.setToValue(1);
+
+        new ParallelTransition(new SequentialTransition(grow, settle), fade).play();
+    }
+
+    private static void bump(Label label, int value) {
+        label.setText(String.valueOf(value));
+        ScaleTransition up = new ScaleTransition(Duration.millis(140), label);
+        up.setFromX(1); up.setFromY(1);
+        up.setToX(1.5); up.setToY(1.5);
+        up.setAutoReverse(true);
+        up.setCycleCount(2);
+        up.play();
     }
 
     public static void main(String[] args) {
