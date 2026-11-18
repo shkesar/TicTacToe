@@ -1,5 +1,27 @@
-.idea/
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Compiled output
 out/
+bin/
+*.class
+
+# IntelliJ IDEA
+.idea/
 *.iml
 
+# VS Code / Eclipse (Java extension)
+.vscode/
+.classpath
+.project
+.settings/
+.factorypath
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Misc
 src/sample
